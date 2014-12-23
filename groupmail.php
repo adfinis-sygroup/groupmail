@@ -32,6 +32,7 @@
  *
  * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
  * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
+ * @author        David Vogt <david.vogt@adfinis-sygroup.ch>
  * @copyright     Adfinis SyGroup AG 2014
  * @license       http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
  */
@@ -97,8 +98,6 @@ else {
 	$data = $ch->data;
 
 	foreach ($data as $identifier => $stanza) {
-		echo "Cheking list $identifier\n";
-
 		try{
 			$mh = new mailHandler($stanza);
 		}
@@ -125,14 +124,13 @@ else {
 				);
 			}
 		}
+		$mh->close();
 	}
 }
 
 /**
  * Function used in the "template" to output sanitized user content
  *
- * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
- * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
  * @param         string
  * @return        void
  */
@@ -142,20 +140,27 @@ function out($string) {
 
 /**
  * This class handles the emails
- *
- * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
- * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
  */
 class mailHandler {
+	/**
+	 * @var        data array containing the config of one group
+	 */
 	private $data = array();
+
+	/**
+	 * @var        conn IMAP connection resource
+	 */
 	private $conn;
+
+	/**
+	 * @var        currentMailId the IMAP ID of the mail in the mailbox, used
+	 *                           for iterating over the mails in the box
+	 */
 	private $currentMailId = 1;
 
 	/**
 	 * Class initializer
 	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @param         array $data
 	 * @throws        Exception
 	 */
@@ -175,27 +180,51 @@ class mailHandler {
 		if (!$this->conn){
 			throw new Exception('Mail connection failed');
 		}
+
+		// The PHP imap library reports an "error" if the mailbox is empty
+		// and stores it in it's internal error list. If you don't clear this
+		// error list, you will get the following, useless message upon the end
+		// of the script: "PHP Notice:  Unknown: Mailbox is empty (errflg=1) in
+		// Unknown on line 0"
+		// Side knowledge: This has apparently been a problem for more than 10
+		// years: http://php.net/manual/en/function.imap-open.php#48144
+		$errors = imap_errors();
+		$alerts = imap_alerts();
 	}
 
 	/**
 	 * Class destructor
-	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 */
 	public function __destruct() {
-		//delete marked messages
-		//imap_expunge($this->conn);
+		$this->close();
+	}
+
+	/**
+	 * Clean up the IMAP connection
+	 *
+	 * This function is directly called as well as used by the destructor - this
+	 * helps to aviod race conditions when accessing the same mailbox from
+	 * different instances.
+	 *
+	 * @return        void
+	 */
+	public function close() {
+		if (!$this->conn) {
+			return;
+		}
+
+		// delete marked messages
+		imap_expunge($this->conn);
 
 		// close connection
 		imap_close($this->conn);
+
+		$this->conn = null;
 	}
 
 	/**
 	 * Fetch and handle emails
 	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @throws        Exception
 	 * @return        array|bool
 	 */
@@ -204,7 +233,6 @@ class mailHandler {
 		$numMails = imap_num_msg($this->conn);
 
 		// loop trough all mails
-		$retval = false;
 		for ($this->currentMailId; $this->currentMailId <= $numMails; $this->currentMailId++) {
 			$header  = imap_headerinfo($this->conn, $this->currentMailId);
 			$from    = $header->fromaddress;
@@ -213,7 +241,6 @@ class mailHandler {
 			$expectedInSubject = sprintf("[%s]", $this->data['secret']);
 
 			if (strstr($subject, $expectedInSubject) === false) {
-				//echo "delete mail with subject: $subject\n";
 				imap_delete($this->conn, $this->currentMailId);
 				continue;
 			}
@@ -240,32 +267,29 @@ class mailHandler {
 			);
 
 			// mark message for deletion
-			//imap_delete($this->conn, $this->currentMailId);
+			imap_delete($this->conn, $this->currentMailId);
 
 			// because we don't finish the loop, we have to manually increment
 			$this->currentMailId++;
 
-			break;
+			return $retval;
 		}
 
-		return $retval;
+		return false;
 	}
 
 	/**
 	 * Send (relay) the mail to the new recipient
 	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @param         string $from
 	 * @param         string $to
 	 * @param         string $subject
 	 * @param         string $body
 	 * @param         string $additionalHeader - needs \r\n at the end
+	 * @throws        Exception
 	 * @return        void
 	 */
 	public function sendMail($from, $to, $subject, $body, $additionalHeader) {
-		print("  Sending mail from: $from, to: $to, subject: $subject\n");
-
 		$headers  = sprintf("From: %s\r\n", $from);
 		$headers .= $additionalHeader;
 		$result = mail($to, $subject, $body, $headers);
@@ -277,9 +301,6 @@ class mailHandler {
 
 /**
  * This class handles reading/writing the config file
- *
- * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
- * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
  */
 class configHandler {
 	/**
@@ -297,8 +318,6 @@ class configHandler {
 	 *
 	 * This class is implemented as a singleton, to avoid many file reads.
 	 * 
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @return        configHandler
 	 */
 	public static function getInstance() {
@@ -329,8 +348,6 @@ class configHandler {
 	/**
 	 * Checks if a given identifier actually is a identifier
 	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @param         string $identifier
 	 * @return        bool
 	 */
@@ -338,6 +355,19 @@ class configHandler {
 		return isset($this->data[$identifier]);
 	}
 
+	/**
+	 * Returns the group members recursively
+	 *
+	 * Creates a list of all recipients of this group. If a recipient matches
+	 * an identifier of an other group, that group's recipients are added
+	 * to the list as well.
+	 *
+	 * Special care is taken to avoid loops and duplicates.
+	 *
+	 * @param         string $identifier
+	 * @param         array  $seen internally used for avoiding loops
+	 * @return        array
+	 */
 	public function getRecipients($identifier, $seen = array()) {
 		$recipients = array_unique($this->data[$identifier]['recipients']);
 
@@ -362,10 +392,10 @@ class configHandler {
 				$finalRecipients[] = $recipient;
 			}
 		}
-		
+
 		// make unique
 		$finalRecipients = array_unique($finalRecipients);
-		
+
 		// remove list addresses (identifiers)
 		$me = $this;
 		$finalRecipients = array_filter(
@@ -382,8 +412,6 @@ class configHandler {
 	 * If you need a more sophisticated solution it should be easy to use a
 	 * MySQL connection here.
 	 *
-	 * @author        Nicolas Christener <nicolas.christener@adfinis-sygroup.ch>
-	 * @author        Cyrill von Wattenwyl <cyrill.vonwattenwyl@adfinis-sygroup.ch>
 	 * @param         array data
 	 * @throws        Exception
 	 * @return        void
