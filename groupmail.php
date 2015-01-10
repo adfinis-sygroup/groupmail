@@ -103,7 +103,7 @@ else {
 		}
 		catch(Exception $e) {
 			printf(
-				"  Error connection to mailbox (%s): %s\n",
+				"Error connection to mailbox (%s): %s\n",
 				$identifier,
 				$e->getMessage()
 			);
@@ -241,6 +241,7 @@ class mailHandler {
 			$expectedInSubject = sprintf("[%s]", $this->data['secret']);
 
 			if (strstr($subject, $expectedInSubject) === false) {
+				printf("Deleting message w/o matching secret, from: %s, subject: %s\n", $from, $subject);
 				imap_delete($this->conn, $this->currentMailId);
 				continue;
 			}
@@ -295,6 +296,9 @@ class mailHandler {
 		$result = mail($to, $subject, $body, $headers);
 		if($result === false) {
 			throw new Exception('Could not send e-mail');
+		}
+		else {
+			printf("Send mail to: %s, subject: %s\n", $to, imap_utf8($subject));
 		}
 	}
 }
