@@ -336,17 +336,28 @@ class configHandler {
 	 * Thou shalt not construct that which is unconstructable!
 	 */
 	protected function __construct() {
-		if (!file_exists('groupmail.cfg')) {
+		$configFile = $this->getConfigFilePath();
+
+		if (!file_exists($configFile)) {
 			return;
 		}
 
-		$this->data = unserialize(file_get_contents('groupmail.cfg'));
+		$this->data = unserialize(file_get_contents($configFile));
 	}
 
 	/**
 	 * Me not like clones! Me smash clones!
 	 */
 	protected function __clone() {
+	}
+
+	/**
+	 * Returns the absolut path to the config file
+	 *
+	 * @return        string
+	 */
+	private function getConfigFilePath() {
+		return sprintf('%s/groupmail.cfg', dirname(__FILE__));
 	}
 
 	/**
@@ -421,7 +432,7 @@ class configHandler {
 	 * @return        void
 	 */
 	public function writeConfig($data) {
-		$result = file_put_contents('groupmail.cfg', serialize($data));
+		$result = file_put_contents($this->getConfigFilePath(), serialize($data));
 		if ($result === false) {
 			throw new Exception('Could not write config file - can PHP write in to this folder?');
 		}
