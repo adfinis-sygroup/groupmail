@@ -19,8 +19,7 @@
  * A: You don't want to allow anyone to send mails to the group - you therefore
  *    configure a "secret" per group and add the secret to the subject of an
  *    e-mail you want to send. The script will check the secret and remove it
- *    from the subject line. The subject needs to have this format:
- *    "[secret] my subject" (without the quotes)
+ *    from the subject line.
  *
  * Q: But it's not save to store the mailbox config in a plain text file!?
  * A: Use a htaccess file to protect the form and the .cfg file
@@ -238,10 +237,16 @@ class mailHandler {
 			$from    = $header->fromaddress;
 			$subject = $header->subject;
 
-			$expectedInSubject = sprintf("[%s]", $this->data['secret']);
+			// The subject in an e-mail is ISO-8859-1 and the saved password is UTF8
+			$expectedInSubject = utf8_decode($this->data['secret']);
 
 			if (strstr($subject, $expectedInSubject) === false) {
-				printf("Deleting message w/o matching secret, from: %s, subject: %s\n", $from, $subject);
+				printf(
+					"Deleting message w/o matching secret\nFrom: %s\nSubject: %s\nPasswort: %s", 
+					$from,
+					$subject,
+					$expectedInSubject
+				);
 				imap_delete($this->conn, $this->currentMailId);
 				continue;
 			}
@@ -253,7 +258,7 @@ class mailHandler {
 			$header = imap_fetchheader($this->conn, $this->currentMailId);
 			// source: http://php.net/manual/en/function.imap-fetchheader.php#82339
 			preg_match_all('/([^: ]+): (.+?(?:\r\n\s(?:.+?))*)\r\n/m', $header, $matches);
-			$index       = array_search('Content-Type', $matches[1]);
+			$index            = array_search('Content-Type', $matches[1]);
 			$additionalHeader = $matches[0][$index];
 
 			// get mail body
@@ -296,10 +301,9 @@ class mailHandler {
 
 		// The RFC 2822 defines CR LF as delimiter, however LF works better
 		// in some/most cases (e.g. gmx, web.de, ...)
-		$headers=str_replace("\r\n","\n",$headers);
-		$body=str_replace("\r\n","\n",$body);
-	
-	
+		$headers  = str_replace("\r\n","\n",$headers);
+		$body     = str_replace("\r\n","\n",$body);
+
 		$result = mail($to, $subject, $body, $headers);
 		if($result === false) {
 			throw new Exception('Could not send e-mail');
