@@ -293,6 +293,13 @@ class mailHandler {
 	public function sendMail($from, $to, $subject, $body, $additionalHeader) {
 		$headers  = sprintf("From: %s\r\n", $from);
 		$headers .= $additionalHeader;
+
+		// The RFC 2822 defines CR LF as delimiter, however LF works better
+		// in some/most cases (e.g. gmx, web.de, ...)
+		$headers=str_replace("\r\n","\n",$headers);
+		$body=str_replace("\r\n","\n",$body);
+	
+	
 		$result = mail($to, $subject, $body, $headers);
 		if($result === false) {
 			throw new Exception('Could not send e-mail');
