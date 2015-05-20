@@ -35,3 +35,8 @@ FAQ
 * *Q: Putting the data in a file is not thread save!?*
    A: We want to keep things simple - if you need a more sophisticated solution
    you can still modify the configHandler class.
+
+Example
+-------
+See this example to see how it looks like:
+![groupmail example](https://raw.githubusercontent.com/adfinis-sygroup/groupmail/master/screenshot.png "Groupmail example")
